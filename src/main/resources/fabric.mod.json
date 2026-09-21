@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "vault-inventory",
+	"version": "${version}",
+	"name": "Vault Inventory",
+	"description": "Op-triggered inventory snapshots: back up a player's inventory, armor/offhand, and ender chest to disk, restore any past snapshot on demand, and take one automatically once per in-game day.",
+	"authors": [
+		"m3l0ncru2t"
+	],
+	"contact": {
+		"homepage": "https://github.com/m3l0ncru2t/vault-inventory",
+		"sources": "https://github.com/m3l0ncru2t/vault-inventory",
+		"issues": "https://github.com/m3l0ncru2t/vault-inventory/issues"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"name.vaultinventory.VaultInventoryMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
