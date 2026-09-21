@@ -7,11 +7,12 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
- * Reloaded fresh on every server (re)start - there's no in-game reload command, since these
- * values only matter at the point a snapshot is taken or pruned. Edit config/vault-inventory.json
- * and restart to change them.
+ * Loaded from config/vault-inventory.json at startup. The values can also be changed live with
+ * /vault set (which saves the file); hand edits to the file still need a restart. Every setting is
+ * a whole number (on/off toggles are 0/1) so they share one command and one listing format.
  */
 final class VaultConfig {
     private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("vault-inventory.json");
@@ -34,6 +35,41 @@ final class VaultConfig {
     /** Death snapshots have their own limit, separate from maxSnapshotsPerPlayer, so frequent deaths
      *  (minigames, PvP) can never push manual and daily snapshots out. */
     int maxDeathSnapshotsPerPlayer = 10;
+
+    /** A setting's name (the JSON field), default, allowed range and what it does. */
+    record Def(String key, int def, int min, int max, String help) {}
+
+    static final List<Def> DEFS = List.of(
+            new Def("maxSnapshotsPerPlayer", 20, 1, 1000, "manual and daily snapshots kept per player; older ones are deleted"),
+            new Def("autoSnapshotIntervalTicks", 24000, 0, 2_000_000, "game ticks between automatic snapshots of everyone online (24000 = one day, 0 = off)"),
+            new Def("snapshotOnDeath", 1, 0, 1, "1 = snapshot a player's items the moment they die, 0 = don't"),
+            new Def("maxDeathSnapshotsPerPlayer", 10, 1, 1000, "death snapshots kept per player, separate from the limit above"));
+
+    static Def def(String key) {
+        return DEFS.stream().filter(d -> d.key().equals(key)).findFirst().orElse(null);
+    }
+
+    synchronized int value(String key) {
+        return switch (key) {
+            case "maxSnapshotsPerPlayer" -> maxSnapshotsPerPlayer;
+            case "autoSnapshotIntervalTicks" -> (int) Math.max(0, Math.min(Integer.MAX_VALUE, autoSnapshotIntervalTicks));
+            case "snapshotOnDeath" -> snapshotOnDeath ? 1 : 0;
+            case "maxDeathSnapshotsPerPlayer" -> maxDeathSnapshotsPerPlayer;
+            default -> throw new IllegalArgumentException(key);
+        };
+    }
+
+    /** Applies a value (already range-checked by the caller) and saves the file. */
+    synchronized void set(String key, int value) {
+        switch (key) {
+            case "maxSnapshotsPerPlayer" -> maxSnapshotsPerPlayer = value;
+            case "autoSnapshotIntervalTicks" -> autoSnapshotIntervalTicks = value;
+            case "snapshotOnDeath" -> snapshotOnDeath = value == 1;
+            case "maxDeathSnapshotsPerPlayer" -> maxDeathSnapshotsPerPlayer = value;
+            default -> throw new IllegalArgumentException(key);
+        }
+        save();
+    }
 
     static synchronized VaultConfig get() {
         if (instance == null) {

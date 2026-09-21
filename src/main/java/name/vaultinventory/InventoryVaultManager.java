@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.nbt.CompoundTag;
@@ -192,6 +193,7 @@ final class InventoryVaultManager {
                     source.sendSuccess(() -> Component.literal("§b/vault list <player> §7- saved snapshots, with clickable Preview/Restore (works offline)"), false);
                     source.sendSuccess(() -> Component.literal("§b/vault preview <player> [#|at <time>|safety] §7- show what a snapshot contains (works offline)"), false);
                     source.sendSuccess(() -> Component.literal("§b/vault restore <player> [#|at <time>|safety] [inventory|enderchest|equipment] §7- restore all or part of a snapshot (player must be online)"), false);
+                    source.sendSuccess(() -> Component.literal("§b/vault settings §7- show the settings; §b/vault set <setting> <value>§7 changes one live (op 3), §b/vault reset <setting>§7 restores its default"), false);
                     source.sendSuccess(() -> Component.literal("§7Every restore saves the current state first - undo with §b/vault restore <player> safety§7."), false);
                     return 1;
                 })
@@ -209,7 +211,76 @@ final class InventoryVaultManager {
                                 .executes(context -> listSnapshots(context.getSource(), singleProfile(context)))))
                 .then(Commands.literal("preview").then(previewTarget))
                 .then(Commands.literal("restore").then(restoreTarget))
+                .then(Commands.literal("settings").executes(context -> listSettings(context.getSource())))
+                .then(Commands.literal("set")
+                        .requires(InventoryVaultManager::canEditSettings)
+                        .then(Commands.argument("setting", StringArgumentType.word())
+                                .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                        VaultConfig.DEFS.stream().map(VaultConfig.Def::key).toList(), builder))
+                                .then(Commands.argument("value", IntegerArgumentType.integer())
+                                        .executes(context -> setSetting(context.getSource(),
+                                                StringArgumentType.getString(context, "setting"),
+                                                IntegerArgumentType.getInteger(context, "value"))))))
+                .then(Commands.literal("reset")
+                        .requires(InventoryVaultManager::canEditSettings)
+                        .then(Commands.argument("setting", StringArgumentType.word())
+                                .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                        VaultConfig.DEFS.stream().map(VaultConfig.Def::key).toList(), builder))
+                                .executes(context -> resetSetting(context.getSource(),
+                                        StringArgumentType.getString(context, "setting")))))
         );
+    }
+
+    private static boolean canEditSettings(CommandSourceStack source) {
+        return source.getPlayer() == null || Permissions.check(source, PERMISSION_NODE + ".settings", 3);
+    }
+
+    private static int listSettings(CommandSourceStack source) {
+        StringBuilder sb = new StringBuilder("§b§l[VAULT] §7settings (change with /vault set <setting> <value>, undo with /vault reset <setting>)");
+        for (VaultConfig.Def d : VaultConfig.DEFS) {
+            int value = VaultConfig.get().value(d.key());
+            sb.append("\n§e").append(d.key()).append(" §f").append(value)
+                    .append(value == d.def() ? "" : " §c(default " + d.def() + ")")
+                    .append(" §7- ").append(d.help()).append(" [").append(d.min()).append("-").append(d.max()).append("]");
+        }
+        source.sendSuccess(() -> Component.literal(sb.toString()), false);
+        return 1;
+    }
+
+    private static int setSetting(CommandSourceStack source, String key, int value) {
+        VaultConfig.Def d = VaultConfig.def(key);
+        if (d == null) {
+            source.sendFailure(Component.literal("§cUnknown setting '" + key + "' - see /vault settings."));
+            return 0;
+        }
+        if (value < d.min() || value > d.max()) {
+            source.sendFailure(Component.literal("§c" + key + " must be between " + d.min() + " and " + d.max() + "."));
+            return 0;
+        }
+        applySetting(source, d, value);
+        source.sendSuccess(() -> Component.literal("§b§l[VAULT] §a" + key + " = §f" + value), true);
+        return 1;
+    }
+
+    private static int resetSetting(CommandSourceStack source, String key) {
+        VaultConfig.Def d = VaultConfig.def(key);
+        if (d == null) {
+            source.sendFailure(Component.literal("§cUnknown setting '" + key + "' - see /vault settings."));
+            return 0;
+        }
+        applySetting(source, d, d.def());
+        source.sendSuccess(() -> Component.literal("§b§l[VAULT] §a" + key + " reset to §f" + d.def()), true);
+        return 1;
+    }
+
+    private static void applySetting(CommandSourceStack source, VaultConfig.Def d, int value) {
+        VaultConfig.get().set(d.key(), value);
+        if (d.key().equals("autoSnapshotIntervalTicks")) {
+            // The period number is clock / interval, so a new interval must not look like a period rollover.
+            lastAutoSnapshotPeriod = null;
+        }
+        VaultInventoryMod.LOGGER.info("[InventoryVault] {} set to {} by {}", d.key(), value,
+                source.getPlayer() != null ? source.getPlayer().getScoreboardName() : "console");
     }
 
     private static void addParts(ArgumentBuilder<CommandSourceStack, ?> node, PartRunner runner) {
