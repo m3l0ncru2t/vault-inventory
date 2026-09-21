@@ -1,0 +1,33 @@
+name: Publish to Modrinth
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+
+      - name: Publish
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: L8JAsBfC
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: build/libs/!(*-@(dev|sources|javadoc)).jar
+          loaders: fabric
+          game-versions: "26.3"
+          version-type: release
+          dependencies: |
+            fabric-api(required){modrinth:P7dR8mSH}
