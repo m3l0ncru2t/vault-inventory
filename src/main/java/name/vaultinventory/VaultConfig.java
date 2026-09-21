@@ -27,6 +27,14 @@ final class VaultConfig {
      *  still works either way. */
     long autoSnapshotIntervalTicks = 24000L;
 
+    /** Take a snapshot of a player's inventory/armor/offhand the moment they die, before their items drop.
+     *  Skipped when they are carrying nothing, so respawn loops can't fill the slots with empty copies. */
+    boolean snapshotOnDeath = true;
+
+    /** Death snapshots have their own limit, separate from maxSnapshotsPerPlayer, so frequent deaths
+     *  (minigames, PvP) can never push manual and daily snapshots out. */
+    int maxDeathSnapshotsPerPlayer = 10;
+
     static synchronized VaultConfig get() {
         if (instance == null) {
             instance = load();
